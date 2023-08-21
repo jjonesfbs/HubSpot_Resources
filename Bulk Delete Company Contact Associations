@@ -1,0 +1,58 @@
+import os
+import requests
+
+def main(event):
+    # Retrieve the API key and company ID from environment variables (secrets)
+    api_key = os.getenv("salty_breakfast")
+    company_id = event.get('inputFields').get('companyID')
+
+    # API endpoints
+    company_url = f"https://api.hubapi.com/crm/v3/objects/companies/{company_id}"
+    association_url = f"https://api.hubapi.com/crm/v3/objects/companies/{company_id}/associations/contacts"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Retrieve company information
+    company_response = requests.get(company_url, headers=headers)
+    if company_response.status_code == 200:
+        company_data = company_response.json()
+        company_name = company_data.get("properties", {}).get("name", "Company Name Not Found")
+        print(f"Company Name: {company_name}")
+    else:
+        error_message = f"Error fetching company information: {company_response.status_code}"
+        print(error_message)
+        return error_message
+
+    # Step 1: Retrieve record IDs of associated contacts
+    contacts_response = requests.get(association_url, headers=headers)
+    if contacts_response.status_code == 200:
+        contacts_data = contacts_response.json()
+        contact_ids = [assoc["id"] for assoc in contacts_data.get("results", [])]
+        print(f"Associated Contact IDs: {contact_ids}")
+
+        # Step 2: Delete association between company and contacts using HubSpot V4 API
+        if contact_ids:
+            for contact_id in contact_ids:
+                delete_url = f"https://api.hubapi.com/crm/v4/objects/companies/{company_id}/associations/contacts/{contact_id}"
+                delete_payload = {
+                    "fromObjectType": "company",
+                    "toObjectType": "contact",
+                    "toObjectId": contact_id
+                }
+
+                delete_response = requests.delete(delete_url, headers=headers, json=delete_payload)
+                if delete_response.status_code == 204:
+                    print(f"Association deleted between company {company_id} and contact {contact_id}")
+                else:
+                    print(f"Error deleting association for contact {contact_id}: {delete_response.status_code}")
+        else:
+            print("No associated contacts to delete.")
+    else:
+        print(f"Error fetching associated contacts: {contacts_response.status_code}")
+
+# Call the main function
+if __name__ == "__main__":
+    main(None)  # Pass None or your event object if you have one
