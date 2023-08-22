@@ -1,12 +1,48 @@
 import os
 import requests
 
+# Function to delete associations between a company and contacts in batches
+def delete_associations_in_batches(api_key, company_id, contact_ids, batch_size=10):
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    from_object_type = "company"
+    to_object_type = "contact"
+
+    for i in range(0, len(contact_ids), batch_size):
+        batch_contact_ids = contact_ids[i:i+batch_size]
+
+        batch_payload = {
+            "inputs": [
+                {
+                    "from": company_id,
+                    "to": contact_id,
+                    "type": f"{to_object_type}_to_{from_object_type}"
+                }
+                for contact_id in batch_contact_ids
+            ]
+        }
+
+        batch_url = f"https://api.hubapi.com/crm/v3/associations/company/contact/batch/archive"
+        batch_response = requests.post(batch_url, headers=headers, json=batch_payload)
+
+        if batch_response.status_code == 204:
+            print(f"Associations deleted in batch for company {company_id} and contacts: {batch_contact_ids}")
+        else:
+            print(f"Error deleting associations in batch: {batch_response.status_code}")
+
+        # Print the response text and status code for debugging
+        print("Response Text:", batch_response.text)
+        print("Response Status Code:", batch_response.status_code)
+
 def main(event):
     # Retrieve the API key and company ID from environment variables (secrets)
-    api_key = os.getenv("salty_breakfast")
+    api_key = os.getenv("Salty_Breakfast_Key")
     company_id = event.get('inputFields').get('companyID')
 
-    # API endpoints
+    # API endpoints and headers
     company_url = f"https://api.hubapi.com/crm/v3/objects/companies/{company_id}"
     association_url = f"https://api.hubapi.com/crm/v3/objects/companies/{company_id}/associations/contacts"
 
@@ -14,7 +50,7 @@ def main(event):
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-    
+
     # Retrieve company information
     company_response = requests.get(company_url, headers=headers)
     if company_response.status_code == 200:
@@ -31,23 +67,9 @@ def main(event):
     if contacts_response.status_code == 200:
         contacts_data = contacts_response.json()
         contact_ids = [assoc["id"] for assoc in contacts_data.get("results", [])]
-        print(f"Associated Contact IDs: {contact_ids}")
 
-        # Step 2: Delete association between company and contacts using HubSpot V4 API
         if contact_ids:
-            for contact_id in contact_ids:
-                delete_url = f"https://api.hubapi.com/crm/v4/objects/companies/{company_id}/associations/contacts/{contact_id}"
-                delete_payload = {
-                    "fromObjectType": "company",
-                    "toObjectType": "contact",
-                    "toObjectId": contact_id
-                }
-
-                delete_response = requests.delete(delete_url, headers=headers, json=delete_payload)
-                if delete_response.status_code == 204:
-                    print(f"Association deleted between company {company_id} and contact {contact_id}")
-                else:
-                    print(f"Error deleting association for contact {contact_id}: {delete_response.status_code}")
+            delete_associations_in_batches(api_key, company_id, contact_ids, batch_size=10)
         else:
             print("No associated contacts to delete.")
     else:
@@ -55,4 +77,4 @@ def main(event):
 
 # Call the main function
 if __name__ == "__main__":
-    main(None)  # Pass None or your event object if you have one
+    main(None)
